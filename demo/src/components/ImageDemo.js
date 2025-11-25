@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import { Pannellum } from "../../../src";
-import alma from "../images/alma.jpg";
-import milan from "../images/milan.jpg";
+import alma from "../images/almaa.jpg"; // Updated path
+import milan from "../images/milann.jpg"; // Updated path
 import arrowIcon from "../images/arrow.png";
 
 // TypeScript-like interfaces for better code organization
@@ -20,16 +20,36 @@ class ImageDemoWithEditor extends Component {
         roomA: {
           id: "roomA",
           title: "Living Room",
-          image: alma,
-          hotspots: [],
+          image: alma, // Your custom image
+          hotspots: [
+            {
+              id: "forward_1",
+              pitch: 0,
+              yaw: 0,
+              target: "roomB",
+              type: "street-view",
+              direction: "forward",
+              cssClass: "street-view-hotspot forward"
+            }
+          ],
           type: SceneType.EQUIRECTANGULAR,
           isPanorama: true
         },
         roomB: {
           id: "roomB",
           title: "Bedroom",
-          image: milan,
-          hotspots: [],
+          image: milan, // Your custom image
+          hotspots: [
+            {
+              id: "backward_1",
+              pitch: 0,
+              yaw: 180,
+              target: "roomA",
+              type: "street-view",
+              direction: "backward",
+              cssClass: "street-view-hotspot backward"
+            }
+          ],
           type: SceneType.EQUIRECTANGULAR,
           isPanorama: true
         }
@@ -42,7 +62,9 @@ class ImageDemoWithEditor extends Component {
       autoRotate: true,
       showControls: true,
       isProcessingImage: false,
-      error: null
+      error: null,
+      mousePosition: { x: 0, y: 0 },
+      showStreetViewArrows: false
     };
 
     this.viewerRef = React.createRef();
@@ -122,6 +144,13 @@ class ImageDemoWithEditor extends Component {
     return new Worker(URL.createObjectURL(blob));
   }
 
+  componentDidMount() {
+    // Add mouse move listener for Street View style navigation
+    if (this.containerRef.current) {
+      this.containerRef.current.addEventListener('mousemove', this.handleMouseMove);
+    }
+  }
+
   componentWillUnmount() {
     // Clean up all object URLs
     this.state.objectUrls.forEach(url => {
@@ -134,7 +163,32 @@ class ImageDemoWithEditor extends Component {
     if (this.imageWorker) {
       this.imageWorker.terminate();
     }
+
+    // Remove event listener
+    if (this.containerRef.current) {
+      this.containerRef.current.removeEventListener('mousemove', this.handleMouseMove);
+    }
   }
+
+  // 🔹 Handle mouse movement for Street View style navigation
+  handleMouseMove = (event) => {
+    const { clientX, clientY } = event;
+    const containerRect = this.containerRef.current.getBoundingClientRect();
+    
+    const x = clientX - containerRect.left;
+    const y = clientY - containerRect.top;
+    
+    this.setState({
+      mousePosition: { x, y },
+      showStreetViewArrows: true
+    });
+
+    // Hide arrows after 2 seconds of no movement
+    clearTimeout(this.mouseTimeout);
+    this.mouseTimeout = setTimeout(() => {
+      this.setState({ showStreetViewArrows: false });
+    }, 2000);
+  };
 
   // 🔹 Convert normal images to panorama format without black areas
   convertImageToPanorama = (imageUrl) => {
@@ -565,6 +619,56 @@ class ImageDemoWithEditor extends Component {
     this.setState({ error: null });
   };
 
+  // 🔹 Render Street View navigation arrows for user-uploaded images
+  renderStreetViewArrows = () => {
+    const { currentScene, scenes, showStreetViewArrows, mousePosition } = this.state;
+    const activeScene = scenes[currentScene];
+    
+    if (!showStreetViewArrows || !activeScene) return null;
+
+    const container = this.containerRef.current;
+    if (!container) return null;
+
+    const containerRect = container.getBoundingClientRect();
+    const containerWidth = containerRect.width;
+    const containerHeight = containerRect.height;
+
+    // Show left arrow when mouse is in left 20% of container
+    const showLeftArrow = mousePosition.x < containerWidth * 0.2;
+    // Show right arrow when mouse is in right 20% of container
+    const showRightArrow = mousePosition.x > containerWidth * 0.8;
+
+    // Find hotspots for navigation
+    const hotspots = activeScene.hotspots || [];
+    const leftHotspot = hotspots.find(hotspot => 
+      hotspot.direction === 'backward' || hotspot.yaw < -90
+    );
+    const rightHotspot = hotspots.find(hotspot => 
+      hotspot.direction === 'forward' || hotspot.yaw > 90
+    );
+
+    return (
+      <div className="street-view-arrows">
+        {showLeftArrow && leftHotspot && (
+          <div 
+            className="street-view-arrow left-arrow"
+            onClick={() => this.changeScene(leftHotspot.target)}
+          >
+            ←
+          </div>
+        )}
+        {showRightArrow && rightHotspot && (
+          <div 
+            className="street-view-arrow right-arrow"
+            onClick={() => this.changeScene(rightHotspot.target)}
+          >
+            →
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // 🔹 Error boundary render method for viewer
   renderViewer() {
     const { currentScene, scenes, autoRotate, showControls } = this.state;
@@ -572,7 +676,7 @@ class ImageDemoWithEditor extends Component {
 
     if (!activeScene || !activeScene.image) {
       return (
-        <div style={styles.errorFallback}>
+        <div className="error-fallback">
           <h3>🖼️ No Image Loaded</h3>
           <p>Upload an image to start exploring</p>
         </div>
@@ -618,7 +722,7 @@ class ImageDemoWithEditor extends Component {
               type="custom"
               pitch={spot.pitch}
               yaw={spot.yaw}
-              cssClass="custom-hotspot"
+              cssClass={spot.cssClass || "custom-hotspot"}
               handleClick={(e) => {
                 e.stopPropagation();
                 this.changeScene(spot.target);
@@ -631,12 +735,12 @@ class ImageDemoWithEditor extends Component {
     } catch (error) {
       console.error("Viewer rendering error:", error);
       return (
-        <div style={styles.errorFallback}>
+        <div className="error-fallback">
           <h3>⚠️ Unable to load viewer</h3>
           <p>Please try refreshing or check your image file.</p>
           <button
             onClick={() => window.location.reload()}
-            style={styles.retryButton}
+            className="retry-button"
           >
             Retry
           </button>
@@ -661,21 +765,15 @@ class ImageDemoWithEditor extends Component {
     const isRealPanorama = activeScene && activeScene.haov === 360;
 
     return (
-      <div style={{
-        fontFamily: "sans-serif",
-        background: '#1a1a1a',
-        minHeight: '100vh',
-        padding: '20px',
-        position: 'relative'
-      }}>
+      <div className="image-demo-container">
 
         {/* Error Display */}
         {error && (
-          <div style={styles.errorBanner}>
+          <div className="error-banner">
             <span>{error}</span>
             <button
               onClick={this.clearError}
-              style={styles.closeErrorButton}
+              className="close-error-button"
               aria-label="Close error message"
             >
               ×
@@ -685,26 +783,26 @@ class ImageDemoWithEditor extends Component {
 
         {/* Loading Overlay */}
         {isProcessingImage && (
-          <div style={styles.loadingOverlay}>
-            <div style={styles.loadingSpinner}></div>
+          <div className="loading-overlay">
+            <div className="loading-spinner"></div>
             <p>Preparing Image...</p>
             <p style={{ fontSize: '12px', opacity: 0.7 }}>Optimizing for viewing</p>
           </div>
         )}
 
         {/* Header */}
-        <div style={styles.header}>
-          <h1 style={{ margin: 0, fontSize: '2.5em', fontWeight: 'bold' }}>🖼️ Image Viewer</h1>
-          <p style={{ margin: '10px 0 0 0', opacity: 0.9 }}>Upload any image and explore it naturally</p>
+        <div className="header-section">
+          <h1 style={{ margin: 0, fontSize: '2.5em', fontWeight: 'bold' }}>🖼️ Street View Style Navigation</h1>
+          <p style={{ margin: '10px 0 0 0', opacity: 0.9 }}>Move your cursor to reveal navigation arrows like Google Street View</p>
         </div>
 
         {/* Quick Upload Controls */}
-        <div style={styles.quickUploadContainer}>
+        <div className="quick-upload-container">
           <h3 style={{ color: 'white', marginBottom: '15px', textAlign: 'center' }}>
             📸 Upload Images
           </h3>
-          <div style={styles.uploadButtons}>
-            <label style={styles.uploadButton}>
+          <div className="upload-buttons">
+            <label className="upload-button">
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
@@ -712,20 +810,20 @@ class ImageDemoWithEditor extends Component {
                 style={{ display: 'none' }}
               />
               🖼️ Upload Image
-              <span style={styles.uploadSubtext}>No black areas - pure image</span>
+              <span className="upload-subtext">No black areas - pure image</span>
             </label>
           </div>
-          <p style={{ color: '#4ecdc4', textAlign: 'center', marginTop: '15px', fontSize: '14px' }}>
-            Only the image is visible - no black parts, no stretching
+          <p className="upload-info-text">
+            Move cursor around the image to reveal Street View navigation arrows
           </p>
         </div>
 
         {/* Controls */}
-        <div style={styles.controlsContainer}>
+        <div className="controls-container">
           <button
             onClick={this.startAddHotspot}
+            className="tour-button"
             style={{
-              ...styles.tourButton,
               background: isAddingHotspot ? '#ff6b6b' : '#4ecdc4'
             }}
             aria-label={isAddingHotspot ? "Click in the tour to place navigation point" : "Add navigation point"}
@@ -737,8 +835,8 @@ class ImageDemoWithEditor extends Component {
           {isRealPanorama && (
             <button
               onClick={this.toggleAutoRotate}
+              className="tour-button"
               style={{
-                ...styles.tourButton,
                 background: autoRotate ? '#45b7d1' : '#96ceb4'
               }}
               aria-label={autoRotate ? 'Pause auto rotation' : 'Enable auto rotation'}
@@ -748,11 +846,11 @@ class ImageDemoWithEditor extends Component {
           )}
 
           {Object.keys(scenes).map((key) => (
-            <div key={key} style={{ position: 'relative' }}>
+            <div key={key} className="scene-button-container">
               <button
                 onClick={() => this.changeScene(key)}
+                className="scene-button"
                 style={{
-                  ...styles.sceneButton,
                   background: key === currentScene ? '#e17055' : '#2d3436',
                   transform: key === currentScene ? 'scale(1.05)' : 'scale(1)',
                   boxShadow: key === currentScene ? '0 8px 25px rgba(0,0,0,0.3)' : 'none'
@@ -768,7 +866,7 @@ class ImageDemoWithEditor extends Component {
               {Object.keys(scenes).length > 1 && (
                 <button
                   onClick={() => this.removeScene(key)}
-                  style={styles.removeSceneButton}
+                  className="remove-scene-button"
                   aria-label={`Remove ${scenes[key].title}`}
                 >
                   ×
@@ -781,22 +879,25 @@ class ImageDemoWithEditor extends Component {
         {/* Viewer */}
         <div
           ref={this.containerRef}
-          style={styles.viewerContainer}
+          className="viewer-container"
         >
           <div style={{ width: '100%', height: '100%', borderRadius: '17px' }}>
             {this.renderViewer()}
           </div>
 
+          {/* Street View Navigation Arrows */}
+          {this.renderStreetViewArrows()}
+
           {/* Scene Info Overlay */}
           {activeScene && (
-            <div style={styles.sceneInfoOverlay}>
+            <div className="scene-info-overlay">
               <div style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '5px' }}>
                 {activeScene.title}
               </div>
               <div style={{ fontSize: '12px', opacity: 0.8 }}>
                 {isRealPanorama ? '360° Panorama' : 'Image View'}
                 <div style={{ marginTop: '5px', color: '#4ecdc4' }}>
-                  {isRealPanorama ? 'Full spherical view' : 'Pure image - no black areas'}
+                  Move cursor to reveal navigation arrows
                 </div>
               </div>
             </div>
@@ -804,8 +905,8 @@ class ImageDemoWithEditor extends Component {
 
           {/* Controls Info */}
           {showControls && activeScene && (
-            <div style={styles.controlsInfo}>
-              <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+            <div className="controls-info">
+              <div className="controls-row">
                 <span>🖱️ Drag to look around</span>
                 <span>🔍 Scroll to zoom</span>
                 {isRealPanorama && autoRotate && <span style={{ color: '#4ecdc4' }}>🔄 Auto-rotating</span>}
@@ -817,24 +918,16 @@ class ImageDemoWithEditor extends Component {
 
         {/* Navigation Hotspots Panel */}
         {activeScene && activeScene.hotspots && activeScene.hotspots.length > 0 && (
-          <div style={styles.hotspotsPanel}>
+          <div className="hotspots-panel">
             <h3 style={{ margin: '0 0 20px 0', textAlign: 'center' }}>
               🧭 Navigation Points
             </h3>
-            <div style={styles.hotspotsGrid}>
+            <div className="hotspots-grid">
               {activeScene.hotspots.map((spot) => (
                 <div
                   key={spot.id}
-                  style={styles.hotspotCard}
+                  className="hotspot-card"
                   onClick={() => this.changeScene(spot.target)}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
-                    e.currentTarget.style.transform = 'translateY(-5px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
                   role="button"
                   tabIndex={0}
                   onKeyPress={(e) => e.key === 'Enter' && this.changeScene(spot.target)}
@@ -849,7 +942,7 @@ class ImageDemoWithEditor extends Component {
                         {scenes[spot.target]?.haov === 360 ? '360° Panorama' : 'Image View'}
                       </div>
                     </div>
-                    <button style={styles.visitButton}>
+                    <button className="visit-button">
                       Visit →
                     </button>
                   </div>
@@ -861,8 +954,8 @@ class ImageDemoWithEditor extends Component {
 
         {/* Linking Modal */}
         {showLinkModal && this.state.pendingHotspot && (
-          <div style={styles.modalOverlay}>
-            <div style={styles.tourModal}>
+          <div className="modal-overlay">
+            <div className="tour-modal">
               <h3 style={{ textAlign: 'center', color: '#2c3e50', marginBottom: '10px' }}>
                 🗺️ Add Navigation Point
               </h3>
@@ -874,7 +967,7 @@ class ImageDemoWithEditor extends Component {
                 <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold', color: '#2c3e50' }}>
                   📸 Add New Location
                 </label>
-                <label style={styles.modalUploadButton}>
+                <label className="modal-upload-button">
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
@@ -894,7 +987,7 @@ class ImageDemoWithEditor extends Component {
                 </label>
                 <select
                   onChange={this.handleSelectExistingScene}
-                  style={styles.sceneSelect}
+                  className="scene-select"
                   aria-label="Select existing tour location"
                 >
                   <option value="">-- Select a location --</option>
@@ -910,7 +1003,7 @@ class ImageDemoWithEditor extends Component {
 
               <button
                 onClick={this.cancelLinking}
-                style={styles.tourButtonDanger}
+                className="tour-button-danger"
                 aria-label="Cancel adding navigation point"
               >
                 Cancel
@@ -919,357 +1012,58 @@ class ImageDemoWithEditor extends Component {
           </div>
         )}
 
-        {/* Styles */}
+        {/* Custom hotspot background image */}
         <style>{`
-          .pnlm-container canvas {
-            pointer-events: auto !important;
+          .custom-hotspot {
+            background-image: url(${arrowIcon});
           }
           
-          .custom-hotspot {
-            width: 40px;
-            height: 40px;
-            background-image: url(${arrowIcon});
-            background-size: contain;
-            filter: drop-shadow(0 2px 8px rgba(0,0,0,0.7));
-            border-radius: 50%;
-            pointer-events: auto !important;
+          /* Street View Navigation Arrows */
+          .street-view-arrows {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
             z-index: 10;
           }
           
-          .custom-hotspot::after {
-            content: '';
+          .street-view-arrow {
             position: absolute;
             top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 100%;
-            height: 100%;
-            background: radial-gradient(circle, rgba(78, 205, 196, 0.8) 0%, rgba(78, 205, 196, 0) 70%);
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            font-size: 40px;
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
-            animation: pulse 2s infinite;
-            pointer-events: none;
-            z-index: -1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            pointer-events: auto;
+            transition: all 0.3s ease;
+            border: 2px solid rgba(255, 255, 255, 0.8);
           }
           
-          @keyframes pulse {
-            0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-            50% { transform: translate(-50%, -50%) scale(1.5); opacity: 0.5; }
-            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+          .street-view-arrow:hover {
+            background: rgba(0, 0, 0, 0.8);
+            transform: translateY(-50%) scale(1.1);
           }
-
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+          
+          .left-arrow {
+            left: 20px;
+          }
+          
+          .right-arrow {
+            right: 20px;
           }
         `}</style>
       </div>
     );
   }
 }
-
-// Enhanced Styles
-const styles = {
-  header: {
-    textAlign: 'center',
-    marginBottom: '20px',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    padding: '20px',
-    borderRadius: '15px',
-    color: 'white'
-  },
-  quickUploadContainer: {
-    marginBottom: '20px',
-    padding: '20px',
-    background: 'linear-gradient(135deg, #2c3e50, #34495e)',
-    borderRadius: '15px',
-    border: '2px dashed #4ecdc4'
-  },
-  uploadButtons: {
-    display: 'flex',
-    gap: '15px',
-    justifyContent: 'center',
-    flexWrap: 'wrap'
-  },
-  uploadButton: {
-    background: 'linear-gradient(135deg, #4ecdc4, #44a08d)',
-    border: 'none',
-    color: 'white',
-    padding: '20px',
-    borderRadius: '15px',
-    cursor: 'pointer',
-    fontWeight: 'bold',
-    transition: 'all 0.3s ease',
-    textAlign: 'center',
-    minWidth: '250px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '5px',
-    boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
-  },
-  uploadSubtext: {
-    fontSize: '12px',
-    opacity: 0.8,
-    fontWeight: 'normal'
-  },
-  uploadModalButtons: {
-    display: 'flex',
-    gap: '10px',
-    justifyContent: 'center'
-  },
-  modalUploadButton: {
-    background: 'linear-gradient(135deg, #3498db, #2980b9)',
-    border: 'none',
-    color: 'white',
-    padding: '15px 20px',
-    borderRadius: '10px',
-    cursor: 'pointer',
-    fontWeight: 'bold',
-    transition: 'all 0.3s ease',
-    textAlign: 'center',
-    width: '100%'
-  },
-  controlsContainer: {
-    marginBottom: '20px',
-    display: 'flex',
-    gap: '10px',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  viewerContainer: {
-    border: "3px solid #34495e",
-    position: 'relative',
-    overflow: 'hidden',
-    width: '100%',
-    height: '70vh',
-    backgroundColor: '#000',
-    borderRadius: '20px',
-    boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-    transition: 'opacity 0.3s ease'
-  },
-  sceneInfoOverlay: {
-    position: 'absolute',
-    top: '20px',
-    left: '20px',
-    background: 'rgba(0,0,0,0.8)',
-    color: 'white',
-    padding: '15px 20px',
-    borderRadius: '15px',
-    zIndex: 5,
-    backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    pointerEvents: 'none'
-  },
-  controlsInfo: {
-    position: 'absolute',
-    bottom: '20px',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    background: 'rgba(0,0,0,0.8)',
-    color: 'white',
-    padding: '15px 25px',
-    borderRadius: '25px',
-    fontSize: '14px',
-    zIndex: 5,
-    backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    pointerEvents: 'none'
-  },
-  hotspotsPanel: {
-    marginTop: '30px',
-    padding: '25px',
-    background: 'linear-gradient(135deg, #2c3e50, #34495e)',
-    borderRadius: '20px',
-    color: 'white'
-  },
-  hotspotsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: '15px'
-  },
-  hotspotCard: {
-    background: 'rgba(255,255,255,0.1)',
-    padding: '20px',
-    borderRadius: '15px',
-    cursor: 'pointer',
-    transition: 'all 0.3s ease',
-    border: '1px solid rgba(255,255,255,0.2)',
-    backdropFilter: 'blur(10px)'
-  },
-  visitButton: {
-    background: 'linear-gradient(135deg, #4ecdc4, #44a08d)',
-    border: 'none',
-    color: 'white',
-    padding: '10px 20px',
-    borderRadius: '25px',
-    cursor: 'pointer',
-    fontWeight: 'bold',
-    transition: 'all 0.3s ease'
-  },
-  tourButton: {
-    padding: "12px 20px",
-    borderRadius: "25px",
-    border: "none",
-    cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: "bold",
-    color: "white",
-    transition: "all 0.3s ease",
-    boxShadow: "0 4px 15px rgba(0,0,0,0.2)"
-  },
-  sceneButton: {
-    padding: "10px 18px",
-    borderRadius: "20px",
-    border: "none",
-    cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: "bold",
-    color: "white",
-    transition: "all 0.3s ease"
-  },
-  removeSceneButton: {
-    position: 'absolute',
-    top: '-8px',
-    right: '-8px',
-    width: '20px',
-    height: '20px',
-    borderRadius: '50%',
-    background: '#e74c3c',
-    border: 'none',
-    color: 'white',
-    fontSize: '12px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 0
-  },
-  tourButtonDanger: {
-    padding: "12px 25px",
-    borderRadius: "25px",
-    border: "none",
-    background: "linear-gradient(135deg, #e74c3c, #c0392b)",
-    color: "white",
-    cursor: "pointer",
-    fontWeight: "bold",
-    transition: "all 0.3s ease",
-    width: '100%'
-  },
-  modalOverlay: {
-    position: "fixed",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    background: "rgba(0,0,0,0.8)",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 9999,
-    backdropFilter: "blur(10px)"
-  },
-  tourModal: {
-    background: "linear-gradient(135deg, #ffffff, #f8f9fa)",
-    padding: "30px",
-    borderRadius: "20px",
-    width: "500px",
-    maxWidth: "90vw",
-    boxShadow: "0 25px 50px rgba(0,0,0,0.3)",
-    border: "1px solid rgba(255,255,255,0.2)"
-  },
-  fileInput: {
-    width: '100%',
-    padding: '15px',
-    border: '2px dashed #bdc3c7',
-    borderRadius: '10px',
-    background: '#ecf0f1',
-    cursor: 'pointer',
-    transition: 'all 0.3s ease'
-  },
-  sceneSelect: {
-    width: '100%',
-    padding: '15px',
-    border: '2px solid #bdc3c7',
-    borderRadius: '10px',
-    background: 'white',
-    fontSize: '14px',
-    cursor: 'pointer'
-  },
-  errorBanner: {
-    position: 'fixed',
-    top: '20px',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    background: 'linear-gradient(135deg, #e74c3c, #c0392b)',
-    color: 'white',
-    padding: '15px 25px',
-    borderRadius: '25px',
-    zIndex: 10000,
-    display: 'flex',
-    alignItems: 'center',
-    gap: '15px',
-    boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-    backdropFilter: 'blur(10px)'
-  },
-  closeErrorButton: {
-    background: 'none',
-    border: 'none',
-    color: 'white',
-    fontSize: '20px',
-    cursor: 'pointer',
-    padding: '0',
-    width: '25px',
-    height: '25px',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  loadingOverlay: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: 'rgba(0,0,0,0.8)',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10000,
-    color: 'white',
-    backdropFilter: 'blur(10px)'
-  },
-  loadingSpinner: {
-    width: '50px',
-    height: '50px',
-    border: '5px solid rgba(255,255,255,0.3)',
-    borderTop: '5px solid #4ecdc4',
-    borderRadius: '50%',
-    animation: 'spin 1s linear infinite',
-    marginBottom: '20px'
-  },
-  errorFallback: {
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: '100%',
-    color: 'white',
-    textAlign: 'center',
-    padding: '40px'
-  },
-  retryButton: {
-    padding: '10px 20px',
-    background: '#4ecdc4',
-    border: 'none',
-    borderRadius: '25px',
-    color: 'white',
-    cursor: 'pointer',
-    marginTop: '15px',
-    fontWeight: 'bold'
-  }
-};
 
 export default ImageDemoWithEditor;
