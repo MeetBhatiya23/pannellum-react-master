@@ -1,2 +1,7 @@
 [build]
-  node_version = "16"
+  base = "demo"
+  command = "npm run build"
+  publish = "build"
+
+[build.environment]
+  NODE_VERSION = "18"
