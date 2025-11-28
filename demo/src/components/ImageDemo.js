@@ -313,7 +313,7 @@ class ImageDemoWithEditor extends Component {
     });
   };
 
-  // 🔹 Hotspot placement
+  // 🔹 Hotspot placement - FIXED
   startAddHotspot = () => {
     this.setState({
       isAddingHotspot: true,
@@ -338,8 +338,8 @@ class ImageDemoWithEditor extends Component {
         pitch,
         yaw,
         target: null,
-        icon: arrowIcon,
-        label: ""
+        type: "custom",
+        cssClass: "custom-hotspot white-hotspot"
       };
 
       this.setState({
@@ -415,7 +415,7 @@ class ImageDemoWithEditor extends Component {
         objectUrls: [...prev.objectUrls, finalImageUrl]
       }));
 
-      // Create the new scene immediately
+      // Create the new scene and link the hotspot
       this.createSceneWithImage(finalImageUrl, newSceneId, analysis, imageData);
 
     } catch (error) {
@@ -428,7 +428,7 @@ class ImageDemoWithEditor extends Component {
     }
   };
 
-  // 🔹 Scene creation with simple configuration
+  // 🔹 Scene creation with simple configuration - FIXED
   createSceneWithImage = (imageUrl, sceneId, analysis, imageData) => {
     this.setState((prev) => {
       const isRealPanorama = analysis.isPanorama;
@@ -475,7 +475,11 @@ class ImageDemoWithEditor extends Component {
 
       if (pending) {
         // If there's a pending hotspot, link it to this new scene
-        const hotspot = { ...pending, target: sceneId };
+        const hotspot = { 
+          ...pending, 
+          target: sceneId,
+          cssClass: "custom-hotspot" // Remove white-hotspot class after linking
+        };
         const currentSceneHotspots = [
           ...(prev.scenes[prev.currentScene].hotspots || []),
           hotspot
@@ -505,7 +509,7 @@ class ImageDemoWithEditor extends Component {
     });
   };
 
-  // 🔹 Handle selecting existing scene
+  // 🔹 Handle selecting existing scene - FIXED
   handleSelectExistingScene = (e) => {
     const targetSceneId = e.target.value;
     if (!targetSceneId) return;
@@ -514,7 +518,11 @@ class ImageDemoWithEditor extends Component {
       const pending = prev.pendingHotspot;
       if (!pending) return prev;
 
-      const hotspot = { ...pending, target: targetSceneId };
+      const hotspot = { 
+        ...pending, 
+        target: targetSceneId,
+        cssClass: "custom-hotspot" // Remove white-hotspot class after linking
+      };
       const scenes = {
         ...prev.scenes,
         [prev.currentScene]: {
@@ -534,7 +542,7 @@ class ImageDemoWithEditor extends Component {
     });
   };
 
-  // 🔹 Cancel linking
+  // 🔹 Cancel linking - FIXED
   cancelLinking = () => {
     this.setState({
       pendingHotspot: null,
@@ -725,7 +733,9 @@ class ImageDemoWithEditor extends Component {
               cssClass={spot.cssClass || "custom-hotspot"}
               handleClick={(e) => {
                 e.stopPropagation();
-                this.changeScene(spot.target);
+                if (spot.target) {
+                  this.changeScene(spot.target);
+                }
               }}
               handleClickArg={spot}
             />
@@ -969,6 +979,7 @@ class ImageDemoWithEditor extends Component {
                 </label>
                 <label className="modal-upload-button">
                   <input
+                    ref={this.fileInputRef}
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
                     onChange={this.handleImageUpload}
@@ -1012,10 +1023,38 @@ class ImageDemoWithEditor extends Component {
           </div>
         )}
 
-        {/* Custom hotspot background image */}
+        {/* Custom hotspot styles */}
         <style>{`
           .custom-hotspot {
+            width: 40px;
+            height: 40px;
             background-image: url(${arrowIcon});
+            background-size: contain;
+            filter: drop-shadow(0 2px 8px rgba(0,0,0,0.7));
+            border-radius: 50%;
+            pointer-events: auto !important;
+            z-index: 10;
+          }
+          
+          .white-hotspot {
+            background: white !important;
+            border: 2px solid #4ecdc4;
+            box-shadow: 0 0 10px rgba(78, 205, 196, 0.8);
+          }
+          
+          .white-hotspot::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 70%);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+            pointer-events: none;
+            z-index: -1;
           }
           
           /* Street View Navigation Arrows */
@@ -1059,6 +1098,12 @@ class ImageDemoWithEditor extends Component {
           
           .right-arrow {
             right: 20px;
+          }
+          
+          @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            50% { transform: translate(-50%, -50%) scale(1.5); opacity: 0.5; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
           }
         `}</style>
       </div>
